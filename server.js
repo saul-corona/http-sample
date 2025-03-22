@@ -13,8 +13,22 @@ server.on("request", (request, response) => {
   console.log(request.headers);
 
   console.log("---------BODY---------");
+  let data = "";
+  const name = request.headers.name;
+
   request.on("data", chunk => {
-    console.log(chunk.toString("utf-8"));
+    data += chunk.toString();
+  });
+
+  request.on("end", () => {
+    data = JSON.parse(data);
+    console.log(name);
+    console.log(data);
+
+    response.writeHead(200, {
+      "Content-Type": "application/json",
+    });
+    response.end(JSON.stringify({ message: "Post received" }));
   });
 });
 
