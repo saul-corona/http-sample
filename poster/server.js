@@ -1,37 +1,88 @@
 const Butter = require("../butter");
 
-const PORT = 3000;
-
-const server = new Butter();
-
-// Mock data
-const USERS = [
-  { id: 1, name: "Liam", username: "liam", password: "password" },
-  { id: 2, name: "Mary", username: "mary", password: "password" },
-  { id: 3, name: "Homer", username: "homer", password: "password" },
-];
-
+// A sample object in this array would look like:
+// { userId: 1, token: 23423423 }
 const SESSIONS = [];
 
-// Mock data
-const POST = [
+const USERS = [
+  { id: 1, name: "Liam Brown", username: "liam23", password: "string" },
+  { id: 2, name: "Meredith Green", username: "merit.sky", password: "string" },
+  { id: 3, name: "Ben Adams", username: "ben.poet", password: "string" },
+];
+
+const POSTS = [
   {
     id: 1,
-    title: "lorem ipsum",
-    body: "lorem ipsum dolor sit amet",
+    title: "This is a post title",
+    body: "orem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged.",
     userId: 1,
   },
 ];
 
-//-----FILES ROUTES-------//
+const PORT = 8000;
 
-server.route("get", "/", (req, res) => {
-  res.sendFile("./public/index.html", "text/html");
+const server = new Butter();
+
+// For authentication
+server.beforeEach((req, res, next) => {
+  const routesToAuthenticate = [
+    "GET /api/user",
+    "PUT /api/user",
+    "POST /api/posts",
+    "DELETE /api/logout",
+  ];
+
+  if (routesToAuthenticate.indexOf(req.method + " " + req.url) !== -1) {
+    // If we have a token cookie, then save the userId to the req object
+    if (req.headers.cookie) {
+      const token = req.headers.cookie.split("=")[1];
+
+      const session = SESSIONS.find(session => session.token === token);
+      if (session) {
+        req.userId = session.userId;
+        return next();
+      }
+    }
+
+    return res.status(401).json({ error: "Unauthorized" });
+  } else {
+    next();
+  }
 });
 
-server.route("get", "/login", (req, res) => {
-  res.sendFile("./public/index.html", "text/html");
+const parseJSON = (req, res, next) => {
+  // This is only good for bodies that their size is less than the highWaterMark value
+  if (req.headers["content-type"] === "application/json") {
+    let body = "";
+    req.on("data", chunk => {
+      body += chunk.toString("utf-8");
+    });
+
+    req.on("end", () => {
+      body = JSON.parse(body);
+      req.body = body;
+      return next();
+    });
+  } else {
+    next();
+  }
+};
+
+// For parsing JSON body
+server.beforeEach(parseJSON);
+
+// For different routes that need the index.html file
+server.beforeEach((req, res, next) => {
+  const routes = ["/", "/login", "/profile", "/new-post"];
+
+  if (routes.indexOf(req.url) !== -1 && req.method === "GET") {
+    return res.status(200).sendFile("./public/index.html", "text/html");
+  } else {
+    next();
+  }
 });
+
+// ------ Files Routes ------ //
 
 server.route("get", "/styles.css", (req, res) => {
   res.sendFile("./public/styles.css", "text/css");
@@ -41,61 +92,83 @@ server.route("get", "/scripts.js", (req, res) => {
   res.sendFile("./public/scripts.js", "text/javascript");
 });
 
-server.listen(PORT, () => {
-  console.log(`Server is listening on port http:localhost/${PORT}`);
-});
+// ------ JSON Routes ------ //
 
-//-----JSON ROUTES-------//
 // Log a user in and give them a token
 server.route("post", "/api/login", (req, res) => {
-  let body = "";
+  const username = req.body.username;
+  const password = req.body.password;
 
-  req.on("data", chunk => {
-    body += chunk.toString("utf-8");
-  });
+  // Check if the user exists
+  const user = USERS.find(user => user.username === username);
 
-  req.on("end", () => {
-    body = JSON.parse(body);
+  // Check the password if the user was found
+  if (user && user.password === password) {
+    // At this point, we know that the client is who they say they are
 
-    const { username, password } = body;
+    // Generate a random 10 digit token
+    const token = Math.floor(Math.random() * 10000000000).toString();
 
-    const user = USERS.find(user => user.username === username);
+    // Save the generated token
+    SESSIONS.push({ userId: user.id, token: token });
 
-    if (user && user.password === password) {
-      const token = Math.floor(Math.random() * 1000000000).toString();
-      SESSIONS.push({
-        token,
-        userId: user.id,
-      });
-      res.setHeader("set-cookie", `token=${token}; Path=/;`);
-      res.status(200).json({ message: "Login successful" });
-    } else {
-      res.status(401).json({ message: "Invalid credentials" });
-    }
-  });
-});
-
-// Log a user out
-server.route("delete", "/api/logout", (req, res) => {});
-
-// Send user info
-server.route("get", "/api/user", (req, res) => {
-  const token = req.headers.cookie.split("=")[1];
-  const session = SESSIONS.find(session => session.token === token);
-  if (session) {
-    const user = USERS.find(user => user.id === session.userId);
-    res.status(200).json({ username: user.username, name: user.name });
+    res.setHeader("Set-Cookie", `token=${token}; Path=/;`);
+    res.status(200).json({ message: "Logged in successfully!" });
   } else {
-    res.status(401).json({ message: "Unauthorized" });
+    res.status(401).json({ error: "Invalid username or password." });
   }
 });
 
+// Log a user out
+server.route("delete", "/api/logout", (req, res) => {
+  // Remove the session from the SESSIONS array
+  const sessionIndex = SESSIONS.findIndex(
+    session => session.userId === req.userId
+  );
+
+  if (sessionIndex > -1) {
+    SESSIONS.splice(sessionIndex, 1);
+  }
+
+  res.setHeader(
+    "Set-Cookie",
+    "token=deleted; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT;"
+  );
+});
+
+// Send user info
+server.route("get", "/api/user", (req, res) => {
+  const user = USERS.find(user => user.id === req.userId);
+  res.json({ username: user.username, name: user.name });
+});
+
 // Update a user info
-server.route("put", "/api/user", (req, res) => {});
+server.route("put", "/api/user", (req, res) => {
+  const username = req.body.username;
+  const name = req.body.name;
+  const password = req.body.password;
+
+  //Grab the user from the USERS array
+  const user = USERS.find(user => user.id === req.userId);
+
+  user.username = username;
+  user.name = name;
+
+  // Only update the password if it was provided
+  if (password) {
+    user.password = password;
+  }
+
+  res.status(200).json({
+    username: user.username,
+    name: user.name,
+    password_status: password ? "updated" : "not updated",
+  });
+});
 
 // Send the list of all the posts that we have
 server.route("get", "/api/posts", (req, res) => {
-  const posts = POST.map(post => {
+  const posts = POSTS.map(post => {
     const user = USERS.find(user => user.id === post.userId);
     post.author = user.name;
     return post;
@@ -105,4 +178,21 @@ server.route("get", "/api/posts", (req, res) => {
 });
 
 // Create a new post
-server.route("post", "/api/posts", (req, res) => {});
+server.route("post", "/api/posts", (req, res) => {
+  const title = req.body.title;
+  const body = req.body.body;
+
+  const post = {
+    id: POSTS.length + 1,
+    title: title,
+    body: body,
+    userId: req.userId,
+  };
+
+  POSTS.unshift(post);
+  res.status(201).json(post);
+});
+
+server.listen(PORT, () => {
+  console.log(`Server has started on port ${PORT}`);
+});
