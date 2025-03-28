@@ -11,6 +11,8 @@ const USERS = [
   { id: 3, name: "Homer", username: "homer", password: "password" },
 ];
 
+const SESSIONS = [];
+
 // Mock data
 const POST = [
   {
@@ -44,16 +46,7 @@ server.listen(PORT, () => {
 });
 
 //-----JSON ROUTES-------//
-server.route("get", "/api/posts", (req, res) => {
-  const posts = POST.map(post => {
-    const user = USERS.find(user => user.id === post.userId);
-    post.author = user.name;
-    return post;
-  });
-
-  res.status(200).json(posts);
-});
-
+// Log a user in and give them a token
 server.route("post", "/api/login", (req, res) => {
   let body = "";
 
@@ -69,6 +62,12 @@ server.route("post", "/api/login", (req, res) => {
     const user = USERS.find(user => user.username === username);
 
     if (user && user.password === password) {
+      const token = Math.floor(Math.random() * 1000000000).toString();
+      SESSIONS.push({
+        token,
+        userId: user.id,
+      });
+      res.setHeader("set-cookie", `token=${token}; Path=/;`);
       res.status(200).json({ message: "Login successful" });
     } else {
       res.status(401).json({ message: "Invalid credentials" });
@@ -76,4 +75,34 @@ server.route("post", "/api/login", (req, res) => {
   });
 });
 
-server.route("get", "/api/users", (req, res) => {});
+// Log a user out
+server.route("delete", "/api/logout", (req, res) => {});
+
+// Send user info
+server.route("get", "/api/user", (req, res) => {
+  const token = req.headers.cookie.split("=")[1];
+  const session = SESSIONS.find(session => session.token === token);
+  if (session) {
+    const user = USERS.find(user => user.id === session.userId);
+    res.status(200).json({ username: user.username, name: user.name });
+  } else {
+    res.status(401).json({ message: "Unauthorized" });
+  }
+});
+
+// Update a user info
+server.route("put", "/api/user", (req, res) => {});
+
+// Send the list of all the posts that we have
+server.route("get", "/api/posts", (req, res) => {
+  const posts = POST.map(post => {
+    const user = USERS.find(user => user.id === post.userId);
+    post.author = user.name;
+    return post;
+  });
+
+  res.status(200).json(posts);
+});
+
+// Create a new post
+server.route("post", "/api/posts", (req, res) => {});
